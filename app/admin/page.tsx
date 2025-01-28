@@ -1,89 +1,62 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, ArrowLeft } from "lucide-react";
-import { AddEmployeeDialog } from "@/components/add-employee-dialog";
-import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { useAttendance } from "@/lib/attendance-context";
 
-// Mock data
-const mockAttendanceRecords = [
-  {
-    id: 1,
-    name: "John Doe",
-    email: "john@example.com",
-    date: "2024-01-29",
-    time: "09:00 AM",
-    location: { lat: "40.7128° N", lng: "74.0060° W" },
-    status: "Present"
-  },
-  {
-    id: 2,
-    name: "Jane Smith",
-    email: "jane@example.com",
-    date: "2024-01-29",
-    time: "08:45 AM",
-    location: { lat: "40.7128° N", lng: "74.0060° W" },
-    status: "Present"
-  },
-  {
-    id: 3,
-    name: "Mike Johnson",
-    email: "mike@example.com",
-    date: "2024-01-29",
-    time: "09:15 AM",
-    location: { lat: "40.7128° N", lng: "74.0060° W" },
-    status: "Present"
-  },
-  {
-    id: 4,
-    name: "Sarah Wilson",
-    email: "sarah@example.com",
-    date: "2024-01-29",
-    time: "09:30 AM",
-    location: { lat: "40.7128° N", lng: "74.0060° W" },
-    status: "Present"
-  },
-  {
-    id: 5,
-    name: "Alex Thompson",
-    email: "alex@example.com",
-    date: "2024-01-29",
-    time: "08:30 AM",
-    location: { lat: "40.7128° N", lng: "74.0060° W" },
-    status: "Present"
-  }
-];
+// Utility function for formatting time
+function formatTime(time: string, status: string) {
+  if (status === 'Absent' || !time || time === '--:--') return '--:--';
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+}
 
 export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const router = useRouter();
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+  const { records } = useAttendance();
+  const [mounted, setMounted] = useState(false);
 
-  const filteredRecords = mockAttendanceRecords.filter(record => {
-    const matchesSearch = 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Filter records for stats
+  const todayStats = mounted ? {
+    total: records.filter(r => r.date === selectedDate).length,
+    present: records.filter(r => r.date === selectedDate && r.status === 'Present').length,
+    late: records.filter(r => r.date === selectedDate && r.status === 'Late').length,
+    absent: records.filter(r => r.date === selectedDate && r.status === 'Absent').length
+  } : {
+    total: 0,
+    present: 0,
+    late: 0,
+    absent: 0
+  };
+
+  const filteredRecords = mounted ? records.filter(record => {
+    const matchesSearch = searchQuery === "" || 
       record.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.email.toLowerCase().includes(searchQuery.toLowerCase());
+      record.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      record.department.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesDate = selectedDate ? record.date === selectedDate : true;
     
     return matchesSearch && matchesDate;
-  });
+  }) : [];
 
-  const handleAddEmployee = (data: { name: string; email: string; department: string }) => {
-    // TODO: Integrate with your backend
-    console.log("New employee:", data);
-    setIsDialogOpen(false);
-  };
+  if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <main className="min-h-screen bg-white p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header Section */}
         <div className="mb-8">
@@ -103,17 +76,21 @@ export default function AdminDashboard() {
               <CardDescription>Today&apos;s attendance count</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-blue-600">25</p>
+              <p className="text-3xl font-bold text-blue-600">{todayStats.total}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle>Present</CardTitle>
-              <CardDescription>Employees present today</CardDescription>
+              <CardDescription>
+                {todayStats.present} On Time • {todayStats.late} Late
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-green-600">22</p>
+              <p className="text-3xl font-bold text-green-600">
+                {todayStats.present + todayStats.late}
+              </p>
             </CardContent>
           </Card>
 
@@ -123,7 +100,7 @@ export default function AdminDashboard() {
               <CardDescription>Employees absent today</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-red-600">3</p>
+              <p className="text-3xl font-bold text-red-600">{todayStats.absent}</p>
             </CardContent>
           </Card>
         </div>
@@ -131,22 +108,22 @@ export default function AdminDashboard() {
         {/* Attendance List */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <CardTitle>Attendance Records</CardTitle>
                 <CardDescription>View and manage employee attendance</CardDescription>
               </div>
-              <div className="flex gap-4">
-                <input
+              <div className="flex flex-col md:flex-row gap-4">
+                <Input
                   type="search"
                   placeholder="Search employees..."
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full md:w-64 bg-white border border-gray-200"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                <input
+                <Input
                   type="date"
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full md:w-48 bg-white border border-gray-200"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
                 />
@@ -181,17 +158,39 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-500">
                         <div>{record.date}</div>
-                        <div>{record.time}</div>
+                        <div>{mounted ? formatTime(record.time, record.status) : record.time}</div>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-500">
-                        <div>Lat: {record.location.lat}</div>
-                        <div>Long: {record.location.lng}</div>
+                        {record.location ? (
+                          <>
+                            <div>Lat: {record.location.lat}</div>
+                            <div>Long: {record.location.lng}</div>
+                          </>
+                        ) : (
+                          <span className="text-gray-400">Not Available</span>
+                        )}
                       </td>
                       <td className="px-4 py-4">
-                        <div className="h-12 w-12 rounded bg-gray-200" />
+                        {record.photo ? (
+                          <img 
+                            src={record.photo} 
+                            alt={`${record.name}'s attendance`}
+                            className="h-12 w-12 rounded object-cover"
+                          />
+                        ) : record.status !== 'Absent' ? (
+                          <div className="h-12 w-12 rounded bg-gray-200" />
+                        ) : (
+                          <div className="h-12 w-12 rounded bg-gray-100 flex items-center justify-center">
+                            <span className="text-xs text-gray-400">N/A</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          record.status === 'Present' ? "bg-green-100 text-green-800" :
+                          record.status === 'Late' ? "bg-yellow-100 text-yellow-800" :
+                          "bg-red-100 text-red-800"
+                        }`}>
                           {record.status}
                         </span>
                       </td>
@@ -204,7 +203,7 @@ export default function AdminDashboard() {
             {/* Pagination */}
             <div className="flex items-center justify-between mt-6">
               <div className="text-sm text-gray-500">
-                Showing {filteredRecords.length} of {mockAttendanceRecords.length} entries
+                Showing {filteredRecords.length} of {records.length} entries
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm">Previous</Button>
